@@ -5,7 +5,7 @@
 #include <sys/socket.h>
 
 int main () {
-  // socket
+  // socket ===================================
   int sck = socket(AF_INET, SOCK_STREAM, 0);
   if (sck < 0) {
     perror("socket");
@@ -18,14 +18,18 @@ int main () {
   addr.sin_port = htons(8080);
   addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-  // bind
+  // bind ===================================
   int bind_r = bind(sck, (struct sockaddr *) &addr, sizeof(addr));
-
   if (bind_r < 0) {
     perror("bind");
     return EXIT_FAILURE;
   }
 
-  // listen
-  // accept
+  // listen ===================================
+  int listen_r = listen(sck, 16);
+  if (listen_r < 0) {
+    perror("listen");
+    return EXIT_FAILURE;
+  }
+  // accept ===================================
 }
