@@ -7,9 +7,59 @@
 #include <sys/uio.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <stddef.h>
 
-// CONSTANTS
+// CONSTANTS ======================================
 #define BUFF_SIZE 4096
+
+// TYPES ==========================================
+enum http_m {
+  UNKNOWN,
+  GET,
+  POST,
+  PUT,
+  PATCH,
+  DELETE
+};
+
+struct request {
+  enum http_m http_method;
+  char path[1024];
+};
+
+// FUNCTION DECLARATIONS ===========================
+
+// Networking
+int setup_listening_socket(uint16_t);
+int parse_request(const char *buffer, struct request *req);
+void handle_client(int);
+
+int main () {
+  // listen for requests at port 8080
+  int sck = setup_listening_socket(8080);
+  if (sck < 0) {
+    return EXIT_FAILURE;
+  }
+
+  // accept requests
+  while(1) {
+    struct sockaddr_in client_address;
+    socklen_t client_address_size = sizeof(client_address);
+    memset(&client_address, 0, sizeof(client_address));
+
+    // accept and open the communication socket with a specific client
+    int client_fd = accept(sck, (struct sockaddr *) &client_address, &client_address_size);
+    if (client_fd < 0) {
+      perror("accept");
+      return EXIT_FAILURE;
+    }
+
+    handle_client(client_fd);
+  }
+
+  // close the listening socket
+  close(sck);
+}
 
 int setup_listening_socket(uint16_t port) {
   // socket ===================================
@@ -52,6 +102,44 @@ int setup_listening_socket(uint16_t port) {
   return sck;
 }
 
+int parse_request(const char *buffer, struct request *req) {
+  // Get HTTP Method
+  char *w_start = strchr(buffer, ' ');
+  if (w_start == NULL) {
+    return -1;
+  }
+
+  if (w_start - buffer == 3 && memcmp(buffer, "GET", 3) == 0) {
+    req->http_method = GET;
+  } else if(w_start - buffer == 4 && memcmp(buffer, "POST", 4) == 0) {
+    req->http_method = POST;
+  } else if (w_start - buffer == 3 && memcmp(buffer, "PUT", 3) == 0) {
+    req->http_method = PUT;
+  } else if (w_start - buffer == 5 && memcmp(buffer, "PATCH", 5) == 0) {
+    req->http_method = PATCH;
+  } else if (w_start - buffer == 6 && memcmp(buffer, "DELETE", 6) == 0) {
+    req->http_method = DELETE;
+  } else {
+    req->http_method = UNKNOWN;
+  }
+
+  char *w_end = strchr(w_start+1, ' ');
+  if (w_end== NULL) {
+    return -1;
+  }
+
+  if (w_end - w_start > sizeof(req->path)) {
+      fprintf(stderr, "Path is too long");
+      return -1;
+  }
+
+  memcpy(req->path, w_start+1, w_end - w_start);
+
+  printf("Path: %.*s\n", (int) (w_end - w_start), w_start+1);
+
+  return 0;
+}
+
 void handle_client(int client_fd) {
     // process the request
     char buff[BUFF_SIZE];
@@ -75,9 +163,18 @@ void handle_client(int client_fd) {
 
     buff[bytes] = '\0';
 
-    //print the raw request
+    // parsing the request
 
     printf("%s\n", buff);
+    struct request req = { 0 };
+    int parse_r = parse_request(buff, &req);
+    if (parse_r < 0) {
+      fprintf(stderr, "Request malformed");
+      close(client_fd);
+      return;
+    }
+
+    // doing something...
 
     // build the resopnse
     char response[4096];
@@ -106,7 +203,7 @@ void handle_client(int client_fd) {
       close(client_fd);
       return;
     } else if (characs >= (int)sizeof(response)) {
-      fprintf(stderr, "text is bigger than the body buffer");
+      fprintf(stderr, "text is bigger than the response buffer");
       close(client_fd);
       return;
     }
@@ -122,31 +219,4 @@ void handle_client(int client_fd) {
     // close the communication socket
     close(client_fd);
     return;
-}
-
-int main () {
-  // listen for requests at port 8080
-  int sck = setup_listening_socket(8080);
-  if (sck < 0) {
-    return EXIT_FAILURE;
-  }
-
-  // accept requests
-  while(1) {
-    struct sockaddr_in client_address;
-    socklen_t client_address_size = sizeof(client_address);
-    memset(&client_address, 0, sizeof(client_address));
-
-    // accept and open the communication socket with a specific client
-    int client_fd = accept(sck, (struct sockaddr *) &client_address, &client_address_size);
-    if (client_fd < 0) {
-      perror("accept");
-      return EXIT_FAILURE;
-    }
-
-    handle_client(client_fd);
-  }
-
-  // close the listening socket
-  close(sck);
 }
